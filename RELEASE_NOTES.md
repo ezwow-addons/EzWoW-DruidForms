@@ -1,11 +1,13 @@
-# v1.0.13
+# v1.0.14
 
 ### 한국어
-- 데이터 공유 방식을 새로 바꿨습니다. 같은 기록을 되풀이해 보내지 않고 상대에게 없는 기록만 주고받아, 공유로 오가는 메시지가 크게 줄었습니다. 예전 버전을 쓰는 사람과도 계속 공유됩니다.
-- 공유 기록의 확인 대기 공간에 남아 있던 이미 확인된 기록을 정리해 저장 데이터가 줄었습니다.
-- /ezshare 창의 사람 탭에서 상대가 쓰는 공유 버전과 EzWoW 애드온 버전을 볼 수 있습니다.
+- 40레벨에 광포한 곰 변신을 배운 뒤 단축키를 눌러도 변신하지 않던 문제를 수정했습니다.
+- 빠른 설정과 설정 창을 체크박스·라디오 버튼으로 바꾸고 선택지를 늘렸습니다: 야외에서 탈것 타기, 날쌘 동물·수중 생물·탈것 중에 누르면 전투 변신으로(전투 준비), 표범 변신 중에 누르면 숨기, 전투 중 같은 변신에서 다시 변신, Shift·Ctrl에 쓸 변신 고르기.
+- 다른 변신 중에 누르면 먼저 풀고 바로 바꿉니다. Alt를 누르면 탈것에서도 내립니다.
+- 빠른 설정에서 긴 줄이 아래 줄과 겹치던 문제를 수정했습니다.
 
 ### English
-- Data sharing works in a new way: records are no longer sent again and again, only what the other player does not have yet, so far fewer sharing messages go around. Sharing with players on older versions continues.
-- Records already confirmed are cleared from the shared-data waiting list, so the saved data is smaller.
-- The Players tab of the /ezshare window shows each player's sharing version and EzWoW addon versions.
+- Fixed the key doing nothing after learning Dire Bear Form at level 40.
+- The quick menu and settings now use check boxes and radio buttons, with more choices: mount outdoors, go to your combat form from Travel/Aquatic Form or a mount (combat ready), Prowl in Cat Form, shift again in combat, and the forms for Shift and Ctrl.
+- From another form, a press now leaves it and shifts in one go. Alt also gets you off your mount.
+- Fixed long lines overlapping in the quick menu.
