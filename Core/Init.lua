@@ -33,12 +33,17 @@ ns.Style = {
 }
 
 ns.DEFAULTS = {
-    language     = "auto",
-    combatForm   = "bear",   -- "bear" | "cat" | "caster" | "moonkin"
-    useAquatic   = true,
-    useTravel    = true,
-    indoorCat    = true,
-    useModifiers = true,
+    language      = "auto",
+    combatForm    = "bear",   -- "bear" | "cat" | "caster" | "moonkin"
+    combatReshift = false,    -- in combat, in the combat form: leave and shift again
+    useAquatic    = true,
+    outdoorForm   = "travel", -- "travel" | "mount" | "cat"
+    indoorCat     = true,
+    combatPrep    = false,    -- Travel/Aquatic Form or mounted: press for the combat form
+    catProwl      = false,    -- Cat Form: press for Prowl
+    useModifiers  = true,
+    shiftForm     = "bear",   -- Shift / Ctrl: a form kind or "mount"
+    ctrlForm      = "cat",
     showButton   = true,
     buttonSize   = 40,
     buttonPos    = nil,
@@ -125,10 +130,25 @@ end
 function ns:InitDB()
     if type(_G.EzWoW_DruidFormsDB) ~= "table" then _G.EzWoW_DruidFormsDB = {} end
     local db = _G.EzWoW_DruidFormsDB
+    -- the old "Travel Form outdoors" check box became the outdoors choice
+    if db.outdoorForm == nil and db.useTravel ~= nil then
+        db.outdoorForm = db.useTravel and "travel" or "cat"
+    end
+    db.useTravel = nil
     for key, value in pairs(self.DEFAULTS) do
         if db[key] == nil then db[key] = value end
     end
     db.buttonSize = math.max(24, math.min(64, tonumber(db.buttonSize) or 40))
+    -- radio settings must hold one of their choices
+    local CHOICES = {
+        combatForm = { bear = true, cat = true, caster = true, moonkin = true },
+        outdoorForm = { travel = true, mount = true, cat = true },
+        shiftForm = { bear = true, cat = true, travel = true, aquatic = true, moonkin = true, mount = true },
+    }
+    CHOICES.ctrlForm = CHOICES.shiftForm
+    for key, allowed in pairs(CHOICES) do
+        if not allowed[db[key]] then db[key] = self.DEFAULTS[key] end
+    end
     self.db = db
 end
 

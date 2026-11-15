@@ -237,6 +237,102 @@ function UIKit:CreateCheck(parent, onClick)
     return c, t
 end
 
+-- Check box (kind "check") or radio button (kind "radio") with its label, drawn with
+-- the game's own art. :Set(text, on, enabled) fills it; :Layout(maxWidth) sizes it
+-- (the label wraps past maxWidth) and returns width, height.
+local RADIO_ART = "Interface\\Buttons\\UI-RadioButton"
+local function textWidth(fs)
+    local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
+    return math.ceil(w or 0)
+end
+
+function UIKit:CreateChoice(parent, kind, fontObject, boxSize)
+    local b = CreateFrame("Button", nil, parent)
+    local size = boxSize or 16
+    b.size = size
+    b.box = b:CreateTexture(nil, "ARTWORK")
+    b.box:SetSize(size, size)
+    b.box:SetPoint("TOPLEFT")
+    b.mark = b:CreateTexture(nil, "OVERLAY")
+    b.mark:SetAllPoints(b.box)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(b.box)
+    if kind == "radio" then
+        b.box:SetTexture(RADIO_ART)
+        b.box:SetTexCoord(0, 0.25, 0, 1)
+        b.mark:SetTexture(RADIO_ART)
+        b.mark:SetTexCoord(0.25, 0.5, 0, 1)
+        hl:SetTexture(RADIO_ART)
+        hl:SetTexCoord(0.5, 0.75, 0, 1)
+    else
+        b.box:SetTexture("Interface\\Buttons\\UI-CheckBox-Up")
+        b.mark:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        hl:SetTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    end
+    hl:SetBlendMode("ADD")
+    b.label = b:CreateFontString(nil, "OVERLAY", fontObject or "GameFontHighlight")
+    b.label:SetJustifyH("LEFT")
+    b.label:SetJustifyV("TOP")
+    function b:Set(text, on, enabled)
+        local S = ns.Style
+        enabled = enabled ~= false
+        self.label:SetText(text or "")
+        self.mark:SetShown(on and true or false)
+        self:SetEnabled(enabled)
+        self.box:SetDesaturated(not enabled)
+        self.mark:SetDesaturated(not enabled)
+        self.box:SetAlpha(enabled and 1 or 0.5)
+        self.mark:SetAlpha(enabled and 1 or 0.5)
+        self.label:SetTextColor(rgba(not enabled and S.disabled or (on and S.accent or S.textBody)))
+    end
+    function b:Layout(maxWidth)
+        local _, fontH = self.label:GetFont()
+        fontH = fontH or 12
+        local textTop = math.max(0, math.floor((self.size - fontH) / 2))
+        self.label:SetWidth(0)
+        local w = textWidth(self.label)
+        local room = maxWidth and (maxWidth - self.size - 3) or nil
+        if room and w > room then w = room end
+        self.label:SetWidth(w + 2)
+        self.label:ClearAllPoints()
+        self.label:SetPoint("TOPLEFT", self.box, "TOPRIGHT", 3, -textTop)
+        local h = math.max(self.size, textTop + math.ceil(self.label:GetStringHeight() or fontH))
+        local width = self.size + 3 + w + 2
+        self:SetSize(width, h)
+        return width, h
+    end
+    return b
+end
+
+-- Places choices left to right from (x, y), wrapping inside width; a prefix label
+-- (or nil) goes first and wrapped lines start under the first choice. Returns the
+-- height used.
+function UIKit:FlowChoices(parent, prefix, widgets, x, y, width, gapX, gapY)
+    local cx, cy, lineH = x, y, 0
+    if prefix then
+        local _, fontH = prefix:GetFont()
+        local boxH = widgets[1] and widgets[1].size or 16
+        prefix:ClearAllPoints()
+        prefix:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y - math.max(0, math.floor((boxH - (fontH or 12)) / 2)))
+        cx = x + textWidth(prefix) + gapX
+        lineH = boxH
+    end
+    local indent = cx
+    for _, w in ipairs(widgets) do
+        local ww, wh = w:Layout(x + width - indent)
+        if cx > indent and cx + ww > x + width then
+            cx = indent
+            cy = cy - lineH - gapY
+            lineH = 0
+        end
+        w:ClearAllPoints()
+        w:SetPoint("TOPLEFT", parent, "TOPLEFT", cx, cy)
+        cx = cx + ww + gapX
+        lineH = math.max(lineH, wh)
+    end
+    return (y - cy) + lineH
+end
+
 function UIKit:CreateEditBox(parent, width, height, placeholderFn, multiLine)
     local S = ns.Style
     local box = CreateFrame("Frame", nil, parent, "BackdropTemplate")

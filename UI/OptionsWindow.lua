@@ -12,7 +12,6 @@ local function rgba(c) return c[1], c[2], c[3], c[4] or 1 end
 local function S() return ns.Style end
 
 local FORM_ORDER = { "bear", "aquatic", "cat", "travel", "moonkin" }
-local COMBAT_CHOICES = { "bear", "cat", "caster", "moonkin" }
 local MODIFIER_KEYS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true, UNKNOWN = true }
 
 -----------------------------------------------------------------------------
@@ -161,14 +160,22 @@ function ns:ToggleOptions()
     close:SetPoint("TOPRIGHT", top, "TOPRIGHT", -10, -10)
 
     local headings = {}
-    local function section(key, y)
-        local t = UIKit:CreateSectionLabel(configFrame, 20, y)
+    -- a section title with a rule under it; :Place(y) puts it at y
+    local function section(key)
+        local t = UIKit:CreateSectionLabel(configFrame, 20, 0)
         local line = configFrame:CreateTexture(nil, "ARTWORK")
         line:SetColorTexture(S().border[1], S().border[2], S().border[3], 0.85)
-        line:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 20, y - 20)
-        line:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -20, y - 20)
         line:SetHeight(1)
         headings[#headings + 1] = { fs = t, key = key }
+        return {
+            Place = function(_, y)
+                t:ClearAllPoints()
+                t:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 20, y)
+                line:ClearAllPoints()
+                line:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 20, y - 20)
+                line:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -20, y - 20)
+            end,
+        }
     end
 
     -- learned forms
@@ -179,7 +186,7 @@ function ns:ToggleOptions()
     learned:SetTextColor(rgba(S().textMuted))
 
     -- 1. Key
-    section("secKey", -104)
+    section("secKey"):Place(-104)
     local keyBtn = UIKit:CreateButton(configFrame, 290, 34, "", true, "GameFontNormal")
     keyBtn:SetPoint("TOPLEFT", 20, -130)
     keyBtn:SetScript("OnClick", startCapture)
@@ -187,51 +194,25 @@ function ns:ToggleOptions()
     clearKey:SetPoint("LEFT", keyBtn, "RIGHT", 6, 0)
     clearKey:SetScript("OnClick", function() ns.SetKey(nil) end)
 
-    -- 2. In combat
-    section("secCombat", -182)
-    local combatBtns = {}
-    for i, kind in ipairs(COMBAT_CHOICES) do
-        local b = UIKit:CreateButton(configFrame, 97, 28, "", false, "GameFontHighlightSmall")
-        b:SetPoint("TOPLEFT", 20 + (i - 1) * 101, -208)
-        b.kind = kind
-        b:SetScript("OnClick", function(self)
-            db.combatForm = self.kind
-            ns.ApplyButton()
-            ns.RefreshOptions()
-        end)
-        combatBtns[#combatBtns + 1] = b
-    end
+    -- 2-4. In combat, out of combat, Shift/Ctrl/Alt: check boxes and radio buttons
+    -- (the same list as the quick menu)
+    local CHOICES_TOP = -178
+    local choiceWidgets = ns.BuildChoiceWidgets(configFrame, { header = "GameFontNormal", text = "GameFontHighlight" }, 18)
 
-    -- 3. Out of combat & modifiers
-    section("secPlace", -254)
-    local checks = {}
-    local function option(x, y, key, after)
-        local c, t = UIKit:CreateCheck(configFrame, function(value)
-            db[key] = value
-            if after then after(value) end
-            ns.ApplyButton()
-            ns.RefreshOptions()
-        end)
-        c:SetPoint("TOPLEFT", x, y)
-        checks[#checks + 1] = { check = c, label = t, key = key }
-    end
-    option(20, -278, "useAquatic")
-    option(20, -304, "useTravel")
-    option(20, -330, "indoorCat")
-    option(20, -356, "useModifiers")
-
-    -- 4. Button
-    section("secButton", -394)
-    option(20, -418, "showButton")
+    -- 5. Button
+    local buttonSection = section("secButton")
+    local showCheck = UIKit:CreateChoice(configFrame, "check", "GameFontHighlight", 18)
+    showCheck:SetScript("OnClick", function()
+        db.showButton = not db.showButton
+        ns.ApplyButton()
+        ns.RefreshOptions()
+    end)
     local moveHint = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    moveHint:SetPoint("TOPLEFT", 24, -450)
     moveHint:SetWidth(392)
     moveHint:SetJustifyH("LEFT")
     moveHint:SetTextColor(rgba(S().textMuted))
     local sizeLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    sizeLabel:SetPoint("TOPLEFT", 24, -480)
     local minus = UIKit:CreateButton(configFrame, 27, 27, "-", false, "GameFontNormalLarge")
-    minus:SetPoint("TOPLEFT", 150, -473)
     local sizeValue = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     sizeValue:SetPoint("LEFT", minus, "RIGHT", 4, 0)
     sizeValue:SetWidth(40)
@@ -245,16 +226,14 @@ function ns:ToggleOptions()
     minus:SetScript("OnClick", function() changeSize(-4) end)
     plus:SetScript("OnClick", function() changeSize(4) end)
     local resetBtn = UIKit:CreateButton(configFrame, 150, 27, "", false, "GameFontHighlightSmall")
-    resetBtn:SetPoint("TOPLEFT", 270, -473)
     resetBtn:SetScript("OnClick", function()
         db.buttonPos = nil
         ns.ApplyButton()
     end)
 
     -- macro preview
-    section("secMacro", -516)
+    local macroSection = section("secMacro")
     local macroText = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    macroText:SetPoint("TOPLEFT", 22, -542)
     macroText:SetWidth(396)
     macroText:SetJustifyH("LEFT")
     macroText:SetJustifyV("TOP")
@@ -304,27 +283,48 @@ function ns:ToggleOptions()
         clearKey:SetLabel(ns:L("keyClear"))
         clearKey:SetEnabledState(isDruid and key ~= nil)
 
-        local combatKind = isDruid and ns.CombatKind() or db.combatForm
-        for _, b in ipairs(combatBtns) do
-            b:SetLabel(isDruid and ns.FormLabel(ns:L("form_" .. b.kind), b.kind) or ns:L("form_" .. b.kind))
-            local available = b.kind == "caster" or (ns.forms[b.kind] ~= nil)
-            b:SetEnabledState(isDruid and available)
-            b:SetActive(isDruid and combatKind == b.kind)
+        -- everything below the key section is placed top to bottom
+        local y = CHOICES_TOP
+        if isDruid then
+            local used = ns.LayoutChoiceWidgets(configFrame, choiceWidgets, 22, y, 396,
+                { gapX = 12, gapY = 5, headerH = 28, sectionGap = 10, headerX = -2, line = true })
+            y = y - used - 8
         end
-        for _, item in ipairs(checks) do
-            item.check:SetChecked(db[item.key] and true or false)
-            local text = ns:L("opt_" .. item.key)
-            if isDruid then text = ns.FormLabel(text, ns.OPTION_FORM[item.key]) end
-            ns.FitText(item.label, text, 370, 12, 9)
+        for _, w in ipairs(choiceWidgets) do
+            for _, part in pairs(w) do
+                if type(part) == "table" and part.SetShown then part:SetShown(isDruid) end
+            end
+            if w.choices then for _, c in ipairs(w.choices) do c:SetShown(isDruid) end end
         end
-        ns.FitText(sizeLabel, ns:L("buttonSize"), 120, 12, 9)
-        sizeValue:SetText(tostring(db.buttonSize))
-        resetBtn:SetLabel(ns:L("resetPos"))
+        buttonSection:Place(y)
+        y = y - 28
+        showCheck:Set(ns:L("opt_showButton"), db.showButton and true or false, true)
+        local _, showH = showCheck:Layout(396)
+        showCheck:ClearAllPoints()
+        showCheck:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 22, y)
+        y = y - showH - 8
         moveHint:SetText(ns:L("moveHint"))
-        macroText:SetText(isDruid and ns.BuildMacro() or "")
+        moveHint:ClearAllPoints()
+        moveHint:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 24, y)
+        y = y - math.ceil(moveHint:GetStringHeight() or 12) - 10
+        ns.FitText(sizeLabel, ns:L("buttonSize"), 120, 12, 9)
+        sizeLabel:ClearAllPoints()
+        sizeLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 24, y - 7)
+        minus:ClearAllPoints()
+        minus:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 150, y)
+        sizeValue:SetText(tostring(db.buttonSize))
+        resetBtn:ClearAllPoints()
+        resetBtn:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 270, y)
+        resetBtn:SetLabel(ns:L("resetPos"))
+        y = y - 27 - 16
+        macroSection:Place(y)
+        y = y - 26
+        macroText:ClearAllPoints()
+        macroText:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 22, y)
+        macroText:SetText(isDruid and ns.MacroPreview() or "")
         -- grow the window so the macro never runs into the buttons below it
         local macroHeight = macroText:GetStringHeight() or 0
-        configFrame:SetHeight(math.max(600, math.ceil(542 + macroHeight + 84)))
+        configFrame:SetHeight(math.max(600, math.ceil(-y + macroHeight + 84)))
         langBtn:SetLabel(ns:L("language") .. ": " .. ns:GetLanguageDisplayLabel() .. " ▼")
         donateBtn:SetLabel(ns:L("donate"))
         local ver = ns.GetVersion()
