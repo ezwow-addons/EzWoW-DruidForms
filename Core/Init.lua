@@ -41,6 +41,7 @@ ns.DEFAULTS = {
     indoorCat     = true,
     combatPrep    = false,    -- Travel/Aquatic Form or mounted: press for the combat form
     catProwl      = false,    -- Cat Form: press for Prowl
+    useWheel      = true,     -- hold the key: form wheel at the mouse
     useModifiers  = true,
     shiftForm     = "bear",   -- Shift / Ctrl: a form kind or "mount"
     ctrlForm      = "cat",

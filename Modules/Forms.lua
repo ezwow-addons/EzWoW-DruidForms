@@ -16,6 +16,7 @@ ns.formCount = 0
 ns.mount = nil      -- { name, icon } of the mount to use (a favorite first)
 ns.prowl = nil      -- { name, icon } once Prowl is learned
 local button, keyButton, header
+local wheelArea, wheelView  -- form wheel: the secure area read on release, and what is drawn
 local iconOnUpdate  -- the visible button's icon prediction (runs only while it is shown)
 
 local CASTER_ICON = "Interface\\Icons\\ClassIcon_Druid"
@@ -115,7 +116,19 @@ local function scanProwl()
     end
 end
 
--- The mount for "mount" choices: a favorite, else the first one collected.
+-- true when this character can ride the mount (riding skill, level, faction).
+-- Where the player stands is not checked (indoors, a loading screen).
+local function mountUsable(journal, mountID, isUsable)
+    if type(journal.GetMountUsabilityByID) == "function" then
+        local ok, usable = pcall(journal.GetMountUsabilityByID, mountID, false)
+        if ok and type(usable) == "boolean" then return usable end
+    end
+    return isUsable == true
+end
+
+-- The mount for "mount" choices: one this character can ride, a favorite
+-- first, else the first one collected. (2026-11-18: a level 43 druid with
+-- Apprentice Riding got a mount that needs the next riding skill.)
 local function scanMount()
     ns.mount = nil
     local journal = C_MountJournal
@@ -125,12 +138,13 @@ local function scanMount()
     local ok, ids = pcall(journal.GetMountIDs)
     if not ok or type(ids) ~= "table" then return end
     for _, mountID in ipairs(ids) do
-        local okInfo, name, spellID, icon, _, _, _, isFavorite, _, _, hidden, collected =
+        local okInfo, name, spellID, icon, _, isUsable, _, isFavorite, _, _, hidden, collected =
             pcall(journal.GetMountInfoByID, mountID)
-        if okInfo and collected and not hidden and type(spellID) == "number" then
+        if okInfo and collected and not hidden and type(spellID) == "number"
+            and mountUsable(journal, mountID, isUsable) then
             local castName = spellInfo(spellID) or name
             if type(castName) == "string" and (not ns.mount or (isFavorite and not ns.mount.favorite)) then
-                ns.mount = { name = castName, icon = icon, favorite = isFavorite and true or false }
+                ns.mount = { name = castName, icon = icon, favorite = isFavorite and true or false, id = mountID }
             end
         end
     end
@@ -186,11 +200,13 @@ function ns.CombatKind()
 end
 
 -- Out of combat: the target in water, outdoors and indoors (nil = stay as you are).
-local function placeKinds()
+-- noMount: the mount can't be used right now (moving, or not here): the land form
+-- (Travel, else Cat, else Bear) instead.
+local function placeKinds(noMount)
     local f, db = ns.forms, ns.db
     local land = (f.travel and "travel") or (f.cat and "cat") or (f.bear and "bear")
     local outdoor = land
-    if db.outdoorForm == "mount" and ns.mount then
+    if db.outdoorForm == "mount" and ns.mount and not noMount then
         outdoor = "mount"
     elseif db.outdoorForm == "cat" then
         outdoor = (f.cat and "cat") or (f.bear and "bear")
@@ -205,7 +221,7 @@ end
 -- target = a form kind, "mount", "prowl", "caster" (leave the form) or nil (nothing);
 -- mode = "keep" (already in it: stay), "toggle" (already in it: leave) or
 -- "reshift" (already in it: leave and shift again).
-local function cases(state)
+local function cases(state, noMount)
     local f, db = ns.forms, ns.db
     local list = {}
     local function add(cond, target, mode)
@@ -224,7 +240,7 @@ local function cases(state)
         add("stealth", nil)
         add(nil, "prowl")
     else
-        local water, outdoor, indoor = placeKinds()
+        local water, outdoor, indoor = placeKinds(noMount)
         if not swimForm and water then add("swimming", water, "toggle") end
         add("outdoors", outdoor, "toggle")
         add(nil, indoor, "toggle")
@@ -343,9 +359,11 @@ local function assemble(list, actions)
 end
 
 -- The macro for a press without Shift/Ctrl/Alt, from one state (default: now).
-function ns.BuildMacro(state)
+-- noMount: the variant for when the mount can't be used (default: now).
+function ns.BuildMacro(state, noMount)
     state = state or ns.CurrentState()
-    local list, actions = cases(state), {}
+    if noMount == nil then noMount = ns.mountBlocked end
+    local list, actions = cases(state, noMount), {}
     for i, case in ipairs(list) do actions[i] = actionOf(state, case) end
     return assemble(list, actions)
 end
@@ -372,6 +390,79 @@ function ns.ModifierMacros(state)
     mods.alt = state == "mount" and "/dismount" or (isForm(state) and "/cancelform" or "")
     return mods
 end
+
+-----------------------------------------------------------------------------
+-- Form wheel: hold the key and a ring of forms opens at the mouse; move toward
+-- one and let go. A tap, or letting go in the middle, does the usual press.
+-- Also in combat: the game's secure code places an invisible area at the
+-- cursor on the press and reads the mouse direction in it on the release.
+-- What is drawn is a separate frame that only follows that area.
+-----------------------------------------------------------------------------
+local WHEEL_ORDER = { "bear", "cat", "travel", "mount", "aquatic", "moonkin", "caster" }  -- clockwise from the top
+local WHEEL_MAX = #WHEEL_ORDER
+local WHEEL_RADIUS = 96   -- ring of icons
+local WHEEL_DEAD = 36     -- the middle: the usual press
+local WHEEL_AREA = 2400   -- size of the invisible area (always around the mouse)
+
+-- what is on the wheel now
+function ns.WheelItems()
+    local list = {}
+    for _, kind in ipairs(WHEEL_ORDER) do
+        if ns.Available(kind) then list[#list + 1] = kind end
+    end
+    return list
+end
+
+-- the item a mouse offset from the middle points at (0 = the middle); the same
+-- sums as WHEEL_SNIPPET
+function ns.WheelSector(dx, dy, n, dead)
+    if n < 2 or dx * dx + dy * dy < dead * dead then return 0 end
+    local a = math.atan2(dx, dy)
+    if a < 0 then a = a + 2 * math.pi end
+    return math.floor(a / (2 * math.pi) * n + 0.5) % n + 1
+end
+
+-- Runs in the game's secure code before the key button acts (also in combat).
+-- Press: open the area at the mouse, do nothing yet. Release: the item the
+-- mouse points at is the button "w<n>" (its macro is "*macrotext-w<n>").
+-- Released in the middle: a tap is the usual press; a long hold does nothing.
+-- The secure code has no clock, so "long" is: held past WHEEL_HOLD (marked by
+-- the addon, out of combat only), or the mouse left the middle and came back
+-- (secure "mouse entered" handlers of the strips around the middle; also in combat).
+-- A press with Shift/Ctrl/Alt is the usual press with that key.
+local WHEEL_SNIPPET = [[
+    if not owner:GetAttribute("wheelon") then return end
+    local area = owner:GetFrameRef("wheel")
+    if down then
+        -- a repeated press while held keeps the middle where it opened
+        if area:IsShown() then return false end
+        if owner:GetAttribute("keymods") and IsModifierKeyDown() then return false end
+        owner:SetAttribute("wlong", nil)
+        area:SetAttribute("moved", nil)
+        area:ClearAllPoints()
+        area:SetPoint("CENTER", "$cursor")
+        area:Show()
+        return false
+    end
+    if not area:IsShown() then return end
+    local x, y = area:GetMousePosition()
+    area:Hide()
+    local long = owner:GetAttribute("wlong") or area:GetAttribute("moved")
+    if not x then
+        if long then return false end
+        return
+    end
+    local size, dead = owner:GetAttribute("wsize"), owner:GetAttribute("wdead")
+    local n = owner:GetAttribute("wn") or 0
+    local dx, dy = (x - 0.5) * size, (y - 0.5) * size
+    if n < 2 or dx * dx + dy * dy < dead * dead then
+        if long then return false end
+        return
+    end
+    local a = math.atan2(dx, dy)
+    if a < 0 then a = a + 2 * math.pi end
+    return "w" .. (math.floor(a / (2 * math.pi) * n + 0.5) % n + 1)
+]]
 
 -- Text for the settings window: the macros for what you are now.
 function ns.MacroPreview()
@@ -505,7 +596,7 @@ end
 local STATE_SNIPPET = [[
     local key, bar = self:GetFrameRef("key"), self:GetFrameRef("bar")
     local keyMods = self:GetAttribute("keymods")
-    local main = self:GetAttribute("p-" .. newstate)
+    local main = (self:GetAttribute("nomount") and self:GetAttribute("pm-" .. newstate)) or self:GetAttribute("p-" .. newstate)
     key:SetAttribute("macrotext", main)
     bar:SetAttribute("*macrotext1", main)
     local m = self:GetAttribute("shift-" .. newstate)
@@ -517,18 +608,24 @@ local STATE_SNIPPET = [[
     m = self:GetAttribute("alt-" .. newstate)
     bar:SetAttribute("alt-macrotext1", m)
     key:SetAttribute("alt-macrotext1", keyMods and m or nil)
+    for i = 1, (self:GetAttribute("wn") or 0) do
+        key:SetAttribute("*macrotext-w" .. i, self:GetAttribute("w" .. i .. "-" .. newstate))
+    end
 ]]
 
 -- the same as STATE_SNIPPET, from the addon (out of combat)
 local function applyState(id)
     local keyMods = header:GetAttribute("keymods")
-    local main = header:GetAttribute("p-" .. id)
+    local main = (header:GetAttribute("nomount") and header:GetAttribute("pm-" .. id)) or header:GetAttribute("p-" .. id)
     keyButton:SetAttribute("macrotext", main)
     button:SetAttribute("*macrotext1", main)
     for _, mod in ipairs(ns.MODIFIERS) do
         local m = header:GetAttribute(mod .. "-" .. id)
         button:SetAttribute(mod .. "-macrotext1", m)
         keyButton:SetAttribute(mod .. "-macrotext1", (keyMods and m) or nil)
+    end
+    for i = 1, (header:GetAttribute("wn") or 0) do
+        keyButton:SetAttribute("*macrotext-w" .. i, header:GetAttribute("w" .. i .. "-" .. id))
     end
 end
 
@@ -552,7 +649,17 @@ function ns.ApplyButton()
         -- down on every press, so its macro would always win.
         local boundKey = ns.GetBoundKey()
         local keyMods = not (boundKey and boundKey:find("%-"))
-        keyButton:RegisterForClicks(keyDownMode() and "AnyDown" or "AnyUp")
+        -- the wheel needs the press and the release; it acts on the release
+        local wheelKinds = ns.WheelItems()
+        local useWheel = db.useWheel and #wheelKinds >= 2
+        if useWheel then
+            keyButton:RegisterForClicks("AnyDown", "AnyUp")
+            keyButton:SetAttribute("useOnKeyDown", false)
+        else
+            keyButton:RegisterForClicks(keyDownMode() and "AnyDown" or "AnyUp")
+            keyButton:SetAttribute("useOnKeyDown", nil)
+            wheelArea:Hide()
+        end
         keyButton:SetAttribute("type", "macro")
         -- visible button: left = the macro ("*" = any keys held) or the Shift/Ctrl/Alt
         -- one, right = quick menu (no secure action)
@@ -562,12 +669,33 @@ function ns.ApplyButton()
         header:SetAttribute("keymods", keyMods)
         header:SetAttribute("_onstate-df", STATE_SNIPPET)
         local states = stateList()
+        -- outdoors on a mount: a second set for when the mount can't be used (moving,
+        -- or not here); ns.UpdateMountBlock picks the set out of combat
+        local mountVariant = db.outdoorForm == "mount" and ns.mount ~= nil
+        header:SetAttribute("nomount", mountVariant and ns.mountBlocked or nil)
         for _, s in ipairs(states) do
-            header:SetAttribute("p-" .. s.id, splitMacro(ns.BuildMacro(s.state), s.id))
+            header:SetAttribute("pm-" .. s.id, mountVariant and splitMacro(ns.BuildMacro(s.state, true), s.id .. "m") or nil)
+            header:SetAttribute("p-" .. s.id, splitMacro(ns.BuildMacro(s.state, false), s.id))
             local mods = ns.ModifierMacros(s.state)
             for _, mod in ipairs(ns.MODIFIERS) do header:SetAttribute(mod .. "-" .. s.id, mods[mod]) end
         end
+        -- wheel: item i from each state (like Shift/Ctrl: the chosen form, or get on/off the mount)
+        header:SetAttribute("wheelon", useWheel)
+        header:SetAttribute("wn", useWheel and #wheelKinds or 0)
+        header:SetAttribute("wsize", WHEEL_AREA)
+        header:SetAttribute("wdead", WHEEL_DEAD)
+        for i = 1, WHEEL_MAX do
+            local kind = useWheel and wheelKinds[i] or nil
+            keyButton:SetAttribute("*type-w" .. i, kind and "macro" or nil)
+            if not kind then keyButton:SetAttribute("*macrotext-w" .. i, nil) end
+            for _, s in ipairs(states) do
+                header:SetAttribute("w" .. i .. "-" .. s.id,
+                    kind and actionMacro(actionOf(s.state, modifierCase(kind))) or nil)
+            end
+        end
+        if ns.RefreshWheelView then ns.RefreshWheelView(useWheel and wheelKinds or {}) end
         local driver = driverText(states)
+        ns.driver = driver
         RegisterStateDriver(header, "df", driver)
         -- the driver reports changes only: put the current state's macros on now
         applyState(currentStateId(driver))
@@ -588,6 +716,41 @@ function ns.ApplyButton()
         button.combat:SetText(ns:L("short_" .. ns.CombatKind()))
         if ns.RefreshQuickMenu then ns.RefreshQuickMenu() end
     end)
+end
+
+-----------------------------------------------------------------------------
+-- Mount or not: a mount can't be summoned while moving, nor where mounts are
+-- not allowed, and a macro can't tell "moving". Out of combat the key's macros
+-- follow it: the outdoor mount press then takes the land form (Travel, else Cat).
+-- (The outdoor press is an out-of-combat case, so combat never needs it.)
+-----------------------------------------------------------------------------
+ns.moving = false
+ns.mountBlocked = false
+local mountHere = true
+
+-- where you stand allows the mount (asked only as a caster: forms and riding change the answer)
+local function readMountHere()
+    local m, journal = ns.mount, C_MountJournal
+    if not (m and m.id and journal and type(journal.GetMountUsabilityByID) == "function") then return true end
+    if (type(IsMounted) == "function" and IsMounted())
+        or (type(GetShapeshiftForm) == "function" and (GetShapeshiftForm() or 0) ~= 0) then
+        return mountHere
+    end
+    local ok, usable = pcall(journal.GetMountUsabilityByID, m.id, false)
+    if ok and type(usable) == "boolean" then return usable end
+    return true
+end
+
+function ns.UpdateMountBlock()
+    if not header or ns.InCombat() then return end
+    mountHere = readMountHere()
+    local blocked = ns.moving or not mountHere
+    if blocked == ns.mountBlocked then return end
+    ns.mountBlocked = blocked
+    -- only with the mount as the outdoor choice is there a second set
+    if not header:GetAttribute("pm-0") then return end
+    header:SetAttribute("nomount", blocked or nil)
+    applyState(currentStateId(ns.driver or ""))
 end
 
 local function condNow(cond)
@@ -622,7 +785,7 @@ local function predictIcon()
         if kind and ns.Available(kind) then a = actionOf(state, modifierCase(kind)) end
     end
     if not a then
-        for _, case in ipairs(cases(state)) do
+        for _, case in ipairs(cases(state, ns.mountBlocked)) do
             if condNow(case.cond) then
                 a = actionOf(state, case)
                 break
@@ -638,6 +801,192 @@ local function kindLabel(kind)
     return kind and ns:L("form_" .. kind) or ns:L("form_none")
 end
 
+-----------------------------------------------------------------------------
+-- What the wheel draws: a ring of icons with names around the middle (the
+-- usual press). Not anchored to the secure area (that would make it secure
+-- too): it reads where the area opened and goes there, also in combat.
+-----------------------------------------------------------------------------
+local WHEEL_ICON = 38
+local WHEEL_HOLD = 0.2   -- a hold: the wheel shows, and the middle no longer does the usual press
+local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local CANCEL_ICON = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+
+local function roundTexture(parent, layer, size, sublevel)
+    local t = parent:CreateTexture(nil, layer, nil, sublevel or 0)
+    t:SetSize(size, size)
+    if parent.CreateMaskTexture and t.AddMaskTexture then
+        local mask = parent:CreateMaskTexture()
+        mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(t)
+        t:AddMaskTexture(mask)
+    end
+    return t
+end
+
+local function buildWheelView()
+    local S = ns.Style
+    local size = (WHEEL_RADIUS + 46) * 2
+    local v = CreateFrame("Frame", nil, UIParent)
+    v:SetSize(size, size)
+    v:SetFrameStrata("FULLSCREEN_DIALOG")
+    v:EnableMouse(false)
+    v:Hide()
+    local rim = roundTexture(v, "BACKGROUND", size)
+    rim:SetPoint("CENTER")
+    -- see-through: the game world stays visible behind the wheel
+    rim:SetColorTexture(S.accent[1], S.accent[2], S.accent[3], 0.22)
+    local disc = roundTexture(v, "BORDER", size - 4)
+    disc:SetPoint("CENTER")
+    disc:SetColorTexture(0.04, 0.04, 0.05, 0.3)
+    v.hub = roundTexture(v, "ARTWORK", WHEEL_DEAD * 2, 0)
+    v.hub:SetPoint("CENTER")
+    v.hub:SetColorTexture(0.18, 0.18, 0.2, 0.4)
+    v.hubIcon = roundTexture(v, "ARTWORK", 30, 2)
+    v.hubIcon:SetPoint("CENTER")
+    v.items = {}
+    for i = 1, WHEEL_MAX do
+        local item = {}
+        item.glow = roundTexture(v, "ARTWORK", WHEEL_ICON + 16, 1)
+        item.glow:SetColorTexture(S.accent[1], S.accent[2], S.accent[3], 0.45)
+        item.icon = roundTexture(v, "ARTWORK", WHEEL_ICON, 3)
+        item.label = v:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local path, fontSize = item.label:GetFont()
+        if path then item.label:SetFont(path, fontSize, "OUTLINE") end
+        v.items[i] = item
+    end
+    v.kinds = {}
+    return v
+end
+
+local function setWheelHover(sel)
+    local v = wheelView
+    if v.sel == sel then return end
+    v.sel = sel
+    local S = ns.Style
+    for i, item in ipairs(v.items) do
+        local on = i == sel
+        item.glow:SetShown(on and i <= #v.kinds)
+        item.icon:SetAlpha(on and 1 or 0.72)
+        item.icon:SetSize(on and WHEEL_ICON + 8 or WHEEL_ICON, on and WHEEL_ICON + 8 or WHEEL_ICON)
+        if on then item.label:SetTextColor(rgba(S.accent)) else item.label:SetTextColor(1, 1, 1, 1) end
+    end
+    if sel == 0 then
+        v.hub:SetColorTexture(S.accent[1], S.accent[2], S.accent[3], 0.4)
+    else
+        v.hub:SetColorTexture(0.18, 0.18, 0.2, 0.4)
+    end
+end
+
+-- the items (out of combat, when the forms or settings change)
+function ns.RefreshWheelView(kinds)
+    if not wheelView then return end
+    local v = wheelView
+    v.kinds = kinds
+    local n = #kinds
+    for i, item in ipairs(v.items) do
+        local kind = kinds[i]
+        item.icon:SetShown(kind ~= nil)
+        item.label:SetShown(kind ~= nil)
+        item.glow:Hide()
+        if kind then
+            local angle = (i - 1) / n * 2 * math.pi
+            local sx, cy = math.sin(angle), math.cos(angle)
+            item.icon:ClearAllPoints()
+            item.icon:SetPoint("CENTER", v, "CENTER", sx * WHEEL_RADIUS, cy * WHEEL_RADIUS)
+            item.glow:ClearAllPoints()
+            item.glow:SetPoint("CENTER", item.icon, "CENTER")
+            item.icon:SetTexture(iconOf(kind))
+            item.label:SetText(ns:L("form_" .. kind))
+            -- the name outside its icon
+            local lx, ly = sx * (WHEEL_RADIUS + 28), cy * (WHEEL_RADIUS + 28)
+            local point = (sx > 0.35 and "LEFT") or (sx < -0.35 and "RIGHT") or (cy > 0 and "BOTTOM") or "TOP"
+            item.label:ClearAllPoints()
+            item.label:SetPoint(point, v, "CENTER", lx, ly)
+        end
+    end
+    v.sel = nil
+end
+
+-- Follows the secure area: opens where it opened (after a short hold) and
+-- lights the item the mouse points at, with the same sums as the release.
+local function watchWheel()
+    local v = wheelView
+    if not wheelArea:IsShown() then
+        if v.since then
+            v.since = nil
+            v:Hide()
+        end
+        return
+    end
+    local now = GetTime()
+    if not v.since then
+        v.since = now
+        v.long, v.movedOut, v.cancelShown = false, false, nil
+        local cx, cy = wheelArea:GetCenter()
+        v.cx, v.cy = cx, cy
+        if cx and cy then
+            v:ClearAllPoints()
+            v:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx, cy)
+        end
+        v.defaultIcon = predictIcon()
+        v.sel = nil
+    end
+    if not (v.cx and v.cy) or #v.kinds < 2 then return end
+    if now - v.since < WHEEL_HOLD then return end
+    -- a hold: the middle does nothing now (the secure release reads this mark;
+    -- in combat it can't be set, and only moving out and back counts)
+    if not v.long and not ns.InCombat() then
+        v.long = true
+        header:SetAttribute("wlong", true)
+    end
+    if not v:IsShown() then v:Show() end
+    local scale = UIParent:GetEffectiveScale() or 1
+    local mx, my = GetCursorPosition()
+    local dx, dy = mx / scale - v.cx, my / scale - v.cy
+    if dx * dx + dy * dy >= WHEEL_DEAD * WHEEL_DEAD then v.movedOut = true end
+    local cancel = v.long or v.movedOut
+    if v.cancelShown ~= cancel then
+        v.cancelShown = cancel
+        v.hubIcon:SetTexture(cancel and CANCEL_ICON or v.defaultIcon)
+    end
+    setWheelHover(ns.WheelSector(dx, dy, #v.kinds, WHEEL_DEAD))
+end
+
+local function createWheel()
+    -- invisible, secure (the secure code may only move protected frames in combat)
+    wheelArea = CreateFrame("Frame", "EzWoWDruidFormsWheelArea", UIParent, "SecureFrameTemplate")
+    wheelArea:SetSize(WHEEL_AREA, WHEEL_AREA)
+    wheelArea:SetPoint("CENTER")
+    wheelArea:EnableMouse(false)
+    wheelArea:Hide()
+    header:SetFrameRef("wheel", wheelArea)
+    -- Four strips around the middle (only there while the key is held): the
+    -- mouse moving into one marks the hold as "left the middle", in secure code.
+    -- (A frame that opens under the mouse gets no "moved in" for its own area,
+    -- so the middle itself can't tell when the mouse leaves it.)
+    local d = WHEEL_DEAD
+    local corners = {
+        { "TOPLEFT", "TOPLEFT", 0, 0, "BOTTOMRIGHT", "BOTTOM", -d, 0 },   -- left
+        { "TOPRIGHT", "TOPRIGHT", 0, 0, "BOTTOMLEFT", "BOTTOM", d, 0 },   -- right
+        { "TOPLEFT", "TOP", -d, 0, "BOTTOMRIGHT", "CENTER", d, d },       -- above
+        { "TOPLEFT", "CENTER", -d, -d, "BOTTOMRIGHT", "BOTTOM", d, 0 },   -- below
+    }
+    for _, c in ipairs(corners) do
+        local strip = CreateFrame("Frame", nil, wheelArea, "SecureHandlerEnterLeaveTemplate")
+        strip:SetPoint(c[1], wheelArea, c[2], c[3], c[4])
+        strip:SetPoint(c[5], wheelArea, c[6], c[7], c[8])
+        strip:EnableMouse(true)
+        strip:SetFrameRef("area", wheelArea)
+        strip:SetAttribute("_onenter", [[ self:GetFrameRef("area"):SetAttribute("moved", true) ]])
+    end
+    if type(SecureHandlerWrapScript) == "function" then
+        pcall(SecureHandlerWrapScript, keyButton, "OnClick", header, WHEEL_SNIPPET)
+    end
+    wheelView = buildWheelView()
+    local watcher = CreateFrame("Frame")
+    watcher:SetScript("OnUpdate", watchWheel)
+end
+
 local function createButtons()
     -- hidden button the key binding clicks
     keyButton = CreateFrame("Button", ns.BUTTON_NAME, UIParent, "SecureActionButtonTemplate")
@@ -645,6 +994,7 @@ local function createButtons()
     keyButton:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10, 10)
     -- follows what you are now and swaps the macros
     header = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
+    createWheel()
 
     button = CreateFrame("Button", "EzWoWDruidFormsBar", UIParent, "SecureActionButtonTemplate,BackdropTemplate")
     button:SetMovable(true)
@@ -698,7 +1048,7 @@ local function createButtons()
         local key = ns.GetBoundKey()
         GameTooltip:AddLine(key and string.format(ns:L("tipKey"), key) or ns:L("tipNoKey"), rgba(ns.Style.textBody))
         GameTooltip:AddLine(string.format(ns:L("tipCombat"), ns:L("form_" .. ns.CombatKind())), rgba(ns.Style.textBody))
-        local water, outdoor, indoor = placeKinds()
+        local water, outdoor, indoor = placeKinds(ns.mountBlocked)
         GameTooltip:AddLine(string.format(ns:L("tipPlace"), kindLabel(water), kindLabel(outdoor), kindLabel(indoor)),
             0.75, 0.8, 0.85, true)
         GameTooltip:AddLine(ns:L("tipMouse"), rgba(ns.Style.accent))
@@ -733,6 +1083,8 @@ function ns.ChoiceRows()
         { check = "indoorCat" },
         { check = "combatPrep" },
         { check = "catProwl", need = "prowl" },
+        { header = "secWheel" },
+        { check = "useWheel" },
         { header = "secMods" },
         { check = "useModifiers" },
         { radio = "shiftForm", prefix = "modShift", choices = ns.MOD_CHOICES, off = modsOff },
@@ -968,11 +1320,25 @@ function ns.Start()
         "PLAYER_LEVEL_UP", "UPDATE_BINDINGS", "CVAR_UPDATE", "NEW_MOUNT_ADDED", "COMPANION_LEARNED" }) do
         pcall(events.RegisterEvent, events, event)
     end
+    -- moving, and where the mount can be used
+    local MOUNT_EVENTS = { PLAYER_STARTED_MOVING = true, PLAYER_STOPPED_MOVING = true,
+        MOUNT_JOURNAL_USABILITY_CHANGED = true, ZONE_CHANGED_NEW_AREA = true, ZONE_CHANGED = true,
+        UPDATE_SHAPESHIFT_FORM = true, PLAYER_MOUNT_DISPLAY_CHANGED = true, PLAYER_REGEN_ENABLED = true }
+    for event in pairs(MOUNT_EVENTS) do pcall(events.RegisterEvent, events, event) end
+    ns.moving = (type(IsPlayerMoving) == "function" and IsPlayerMoving()) and true or false
     events:SetScript("OnEvent", function(_, event)
-        if event == "UPDATE_BINDINGS" or event == "CVAR_UPDATE" then
+        if MOUNT_EVENTS[event] then
+            if event == "PLAYER_STARTED_MOVING" then
+                ns.moving = true
+            elseif event == "PLAYER_STOPPED_MOVING" then
+                ns.moving = false
+            end
+            ns.UpdateMountBlock()
+        elseif event == "UPDATE_BINDINGS" or event == "CVAR_UPDATE" then
             ns.ApplyButton()
         else
             ns.Refresh()
         end
     end)
+    ns.UpdateMountBlock()
 end

@@ -17,18 +17,19 @@ One key for the right druid form in WoW Forever: Aquatic Form in water, Travel F
 
 ### One key
 - **Swimming** (also in combat): Aquatic Form, if enabled. Already aquatic: it stays.
-- **Out of combat, outdoors**: Travel Form (Cat Form if not learned yet).
+- **Out of combat, outdoors**: Travel Form (Cat Form if not learned yet), or your mount if you pick it; while moving or where mounts aren't allowed, Travel Form instead.
 - **Out of combat, indoors**: Cat Form (can be turned off to stay as you are).
 - **Press again outdoors or indoors**: back to caster form.
 - **In combat**: Bear, Cat, Caster or Moonkin, your choice (Bear by default). Pressing again never drops the form; from another form it changes in one press.
 - **Modifiers** (any time, can be turned off): Shift = Bear, Ctrl = Cat, Alt = leave form. Shift and Ctrl keep you in the form if you are already in it.
+- **Form wheel** (can be turned off): hold the key and a wheel of your forms opens at the mouse. Move toward a form and let go to take it, also in combat; a tap does the usual press, and letting go in the middle after a hold cancels.
 - The choice is made by the game's macro conditions, so it works in combat. The settings show the current macro; a macro too long for one button (long spell names) is split up and run in parts automatically.
 
 ### Key binding
 - Click the key button in the settings and press a key: keyboard keys, mouse wheel, middle and side mouse buttons. Esc cancels.
 - Or bind it in the game's Key Bindings under "AddOns".
 - Chat tells you when the key's old action is replaced, and when Shift/Ctrl + that key is already bound to something else (Bear/Cat then won't work with it).
-- Follows the game's "cast on key down" setting.
+- Follows the game's "cast on key down" setting; with the form wheel on, a tap acts when you let go of the key.
 
 ### On-screen button
 - Left-click to shift. The icon shows the form the next press gives.
@@ -70,18 +71,19 @@ WoW Forever용 드루이드 변신 애드온입니다. 단축키 하나로 물�
 
 ### 단축키 하나로
 - **물속** (전투 중에도): 수중 생물 변신(켰을 때). 이미 수중 생물이면 그대로.
-- **전투 밖 · 야외**: 날쌘 동물 변신(아직 없으면 표범).
+- **전투 밖 · 야외**: 날쌘 동물 변신(아직 없으면 표범). 탈것을 고르면 탈것을 타고, 움직이는 중이거나 탈것을 못 타는 곳이면 날쌘 동물로 바뀝니다.
 - **전투 밖 · 실내**: 표범 변신(끄면 실내에서는 그대로).
 - **야외·실내에서 다시 누르면**: 원래 모습.
 - **전투 중**: 곰 · 표범 · 원래 모습 · 달빛야수 중 고른 변신(기본 곰). 다시 눌러도 풀리지 않고, 다른 변신 중이어도 한 번에 바뀝니다.
 - **보조키** (언제나, 끌 수 있음): Shift = 곰, Ctrl = 표범, Alt = 변신 풀기. Shift·Ctrl은 이미 그 변신이면 그대로 유지합니다.
+- **변신 원판** (끌 수 있음): 단축키를 길게 누르면 마우스 자리에 변신 원판이 나옵니다. 고를 변신 쪽으로 마우스를 옮겨 떼면 그 변신을 하고(전투 중에도), 짧게 누르면 기본 동작, 길게 눌렀다가 가운데에서 떼면 취소합니다.
 - 판단은 게임 매크로 조건으로 하므로 전투 중에도 동작합니다. 설정 창에서 지금 쓰는 매크로를 볼 수 있고, 주문 이름이 길어 매크로가 한 번에 들어가지 않으면 자동으로 나눠 실행합니다.
 
 ### 단축키 지정
 - 설정 창에서 단축키 버튼을 누르고 쓸 키를 누릅니다. 키보드, 마우스 휠, 가운데·옆 버튼 모두 가능하고 Esc는 취소입니다.
 - 게임 단축키 설정의 "애드온" 항목에서도 지정할 수 있습니다.
 - 그 키의 기존 동작이 바뀌거나, Shift/Ctrl + 그 키가 이미 다른 기능에 쓰이고 있으면 대화창에 알려 줍니다(그 조합으로는 곰/표범 변신이 동작하지 않습니다).
-- 게임 설정의 "키를 누를 때 시전" 여부를 그대로 따릅니다.
+- 게임 설정의 "키를 누를 때 시전" 여부를 그대로 따릅니다. 단, 변신 원판을 켜 두면 짧게 누를 때도 키를 뗄 때 동작합니다.
 
 ### 화면 버튼
 - 왼쪽 클릭으로 변신합니다. 아이콘은 지금 누르면 될 변신으로 바뀝니다.
