@@ -129,7 +129,25 @@ end
 -- The mount for "mount" choices: one this character can ride, a favorite
 -- first, else the first one collected. (2026-11-18: a level 43 druid with
 -- Apprentice Riding got a mount that needs the next riding skill.)
+-- The game's answer to "can this character ride it" holds only as a caster on the ground: in a form,
+-- on a mount, swimming or on a flight path every mount comes back as not usable. A scan then (forms change
+-- the spell list, so a shapeshift scans again) left "(no mount)" until the next scan (2026-11-22, user:
+-- "탈것 없음" and the mount never came). Then the last choice is kept, and the scan waits for caster form.
+local function caster()
+    if type(IsMounted) == "function" and IsMounted() then return false end
+    if type(GetShapeshiftForm) == "function" and (GetShapeshiftForm() or 0) ~= 0 then return false end
+    if type(IsSwimming) == "function" and IsSwimming() then return false end
+    if type(UnitOnTaxi) == "function" and UnitOnTaxi("player") then return false end
+    return true
+end
+ns.CanAskMountUsability = caster
+
 local function scanMount()
+    if not caster() then
+        ns.mountScanWaiting = true
+        return
+    end
+    ns.mountScanWaiting = nil
     ns.mount = nil
     local journal = C_MountJournal
     if not (journal and type(journal.GetMountIDs) == "function" and type(journal.GetMountInfoByID) == "function") then
@@ -1333,6 +1351,11 @@ function ns.Start()
             elseif event == "PLAYER_STOPPED_MOVING" then
                 ns.moving = false
             end
+            -- a mount scan that had to wait (in a form, mounted, swimming): back as a caster, scan now
+            if ns.mountScanWaiting and ns.CanAskMountUsability() then
+                ns.mountScanWaiting = nil
+                ns.Refresh()
+            end
             ns.UpdateMountBlock()
         elseif event == "UPDATE_BINDINGS" or event == "CVAR_UPDATE" then
             ns.ApplyButton()
@@ -1341,4 +1364,10 @@ function ns.Start()
         end
     end)
     ns.UpdateMountBlock()
+    -- a mount made a favorite (or no longer one) in the mount journal: choose again (favorites first)
+    if C_MountJournal and type(C_MountJournal.SetIsFavorite) == "function" and hooksecurefunc then
+        pcall(hooksecurefunc, C_MountJournal, "SetIsFavorite", function()
+            if C_Timer and C_Timer.After then C_Timer.After(0.5, ns.Refresh) else ns.Refresh() end
+        end)
+    end
 end
