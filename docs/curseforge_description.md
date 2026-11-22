@@ -17,7 +17,7 @@ One key for the right druid form in WoW Forever: Aquatic Form in water, Travel F
 
 ### One key
 - **Swimming** (also in combat): Aquatic Form, if enabled. Already aquatic: it stays.
-- **Out of combat, outdoors**: Travel Form (Cat Form if not learned yet), or your mount if you pick it; while moving or where mounts aren't allowed, Travel Form instead.
+- **Out of combat, outdoors**: Travel Form (Cat Form if not learned yet), or your mount if you pick it (a favorite from your mount collection first, only mounts you can ride); while moving or where mounts aren't allowed, Travel Form instead.
 - **Out of combat, indoors**: Cat Form (can be turned off to stay as you are).
 - **Press again outdoors or indoors**: back to caster form.
 - **In combat**: Bear, Cat, Caster or Moonkin, your choice (Bear by default). Pressing again never drops the form; from another form it changes in one press.
@@ -71,7 +71,7 @@ WoW Forever용 드루이드 변신 애드온입니다. 단축키 하나로 물�
 
 ### 단축키 하나로
 - **물속** (전투 중에도): 수중 생물 변신(켰을 때). 이미 수중 생물이면 그대로.
-- **전투 밖 · 야외**: 날쌘 동물 변신(아직 없으면 표범). 탈것을 고르면 탈것을 타고, 움직이는 중이거나 탈것을 못 타는 곳이면 날쌘 동물로 바뀝니다.
+- **전투 밖 · 야외**: 날쌘 동물 변신(아직 없으면 표범). 탈것을 고르면 탈것을 타고(탈것 도감의 즐겨찾기 먼저, 탈 수 있는 것만), 움직이는 중이거나 탈것을 못 타는 곳이면 날쌘 동물로 바뀝니다.
 - **전투 밖 · 실내**: 표범 변신(끄면 실내에서는 그대로).
 - **야외·실내에서 다시 누르면**: 원래 모습.
 - **전투 중**: 곰 · 표범 · 원래 모습 · 달빛야수 중 고른 변신(기본 곰). 다시 눌러도 풀리지 않고, 다른 변신 중이어도 한 번에 바뀝니다.
