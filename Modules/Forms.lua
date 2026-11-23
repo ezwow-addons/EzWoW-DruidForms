@@ -129,43 +129,96 @@ end
 -- The mount for "mount" choices: one this character can ride, a favorite
 -- first, else the first one collected. (2026-11-18: a level 43 druid with
 -- Apprentice Riding got a mount that needs the next riding skill.)
--- The game's answer to "can this character ride it" holds only as a caster on the ground: in a form,
--- on a mount, swimming or on a flight path every mount comes back as not usable. A scan then (forms change
--- the spell list, so a shapeshift scans again) left "(no mount)" until the next scan (2026-11-22, user:
--- "탈것 없음" and the mount never came). Then the last choice is kept, and the scan waits for caster form.
+-- A "yes" from the game always counts (checked 2026-11-22: in Travel Form it says yes for the
+-- rideable mounts). A "no" is trusted only as a caster on the ground: in a form, on a mount, swimming,
+-- falling, dead or on a flight path the last choice is kept and the scan waits for caster form.
+-- (2026-11-22: scans in a form, and right after leaving one, left "(no mount)" for good.)
 local function caster()
     if type(IsMounted) == "function" and IsMounted() then return false end
     if type(GetShapeshiftForm) == "function" and (GetShapeshiftForm() or 0) ~= 0 then return false end
     if type(IsSwimming) == "function" and IsSwimming() then return false end
+    if type(IsFalling) == "function" and IsFalling() then return false end
     if type(UnitOnTaxi) == "function" and UnitOnTaxi("player") then return false end
+    if type(UnitIsDeadOrGhost) == "function" and UnitIsDeadOrGhost("player") then return false end
     return true
 end
 ns.CanAskMountUsability = caster
 
+-- Even as a caster the answer can lag: right after leaving a form or getting off
+-- a mount every mount still came back as not usable, and "(no mount)" stayed
+-- (2026-11-22, again). A scan that finds none keeps the last choice and asks
+-- again (a second later, and on the next usability change or stop) up to
+-- MOUNT_RETRIES times in a row before it believes there is none.
+local MOUNT_RETRIES = 5
+
+local function inAirOrWater()
+    return (type(IsFalling) == "function" and IsFalling()) or (type(IsSwimming) == "function" and IsSwimming())
+end
+
+-- one look again a second later (landing and leaving the water send no event)
+local function retryLater()
+    if ns.mountRetryTimer or not (C_Timer and type(C_Timer.After) == "function") then return end
+    ns.mountRetryTimer = true
+    C_Timer.After(1, function()
+        ns.mountRetryTimer = nil
+        if ns.RetryMountScan then ns.RetryMountScan() end
+    end)
+end
+
 local function scanMount()
-    if not caster() then
-        ns.mountScanWaiting = true
-        return
-    end
     ns.mountScanWaiting = nil
-    ns.mount = nil
     local journal = C_MountJournal
     if not (journal and type(journal.GetMountIDs) == "function" and type(journal.GetMountInfoByID) == "function") then
+        ns.mount = nil
         return
     end
     local ok, ids = pcall(journal.GetMountIDs)
     if not ok or type(ids) ~= "table" then return end
+    local found
     for _, mountID in ipairs(ids) do
         local okInfo, name, spellID, icon, _, isUsable, _, isFavorite, _, _, hidden, collected =
             pcall(journal.GetMountInfoByID, mountID)
         if okInfo and collected and not hidden and type(spellID) == "number"
             and mountUsable(journal, mountID, isUsable) then
             local castName = spellInfo(spellID) or name
-            if type(castName) == "string" and (not ns.mount or (isFavorite and not ns.mount.favorite)) then
-                ns.mount = { name = castName, icon = icon, favorite = isFavorite and true or false, id = mountID }
+            if type(castName) == "string" and (not found or (isFavorite and not found.favorite)) then
+                found = { name = castName, icon = icon, favorite = isFavorite and true or false, id = mountID }
             end
         end
     end
+    if found then
+        ns.mount, ns.mountRetries = found, 0
+        return
+    end
+    -- none: in a form, mounted, swimming, falling or dead the "no" may not hold;
+    -- keep the last choice and look again once back as a caster on the ground
+    if not caster() then
+        ns.mountScanWaiting = true
+        ns.mountRetries = 0
+        if inAirOrWater() then retryLater() end
+        return
+    end
+    ns.mountRetries = (ns.mountRetries or 0) + 1
+    if ns.mountRetries > MOUNT_RETRIES then
+        ns.mount = nil
+        return
+    end
+    ns.mountScanWaiting = true
+    retryLater()
+end
+
+-- a scan that had to wait: ask again now if the game can answer (only the mount;
+-- the buttons and the options are redone when the choice changed). anyState: ask
+-- in a form too (a "yes" counts there)
+function ns.RetryMountScan(anyState)
+    if not ns.mountScanWaiting then return end
+    if not anyState and not caster() then
+        if inAirOrWater() then retryLater() end
+        return
+    end
+    local before = ns.mount and ns.mount.id
+    scanMount()
+    if (ns.mount and ns.mount.id) ~= before and ns.Refresh then ns.Refresh() end
 end
 
 -- Reads the stance bar (only learned forms are on it), Prowl and the mount.
@@ -1341,7 +1394,8 @@ function ns.Start()
     -- moving, and where the mount can be used
     local MOUNT_EVENTS = { PLAYER_STARTED_MOVING = true, PLAYER_STOPPED_MOVING = true,
         MOUNT_JOURNAL_USABILITY_CHANGED = true, ZONE_CHANGED_NEW_AREA = true, ZONE_CHANGED = true,
-        UPDATE_SHAPESHIFT_FORM = true, PLAYER_MOUNT_DISPLAY_CHANGED = true, PLAYER_REGEN_ENABLED = true }
+        UPDATE_SHAPESHIFT_FORM = true, PLAYER_MOUNT_DISPLAY_CHANGED = true, PLAYER_REGEN_ENABLED = true,
+        PLAYER_ALIVE = true, PLAYER_UNGHOST = true }
     for event in pairs(MOUNT_EVENTS) do pcall(events.RegisterEvent, events, event) end
     ns.moving = (type(IsPlayerMoving) == "function" and IsPlayerMoving()) and true or false
     events:SetScript("OnEvent", function(_, event)
@@ -1351,10 +1405,16 @@ function ns.Start()
             elseif event == "PLAYER_STOPPED_MOVING" then
                 ns.moving = false
             end
-            -- a mount scan that had to wait (in a form, mounted, swimming): back as a caster, scan now
-            if ns.mountScanWaiting and ns.CanAskMountUsability() then
-                ns.mountScanWaiting = nil
-                ns.Refresh()
+            -- the game says which mounts can be used changed: with none chosen, ask again
+            -- (also after the tries above ran out, e.g. the mount list came in late)
+            if event == "MOUNT_JOURNAL_USABILITY_CHANGED" and not ns.mount then
+                ns.mountRetries = 0
+                ns.mountScanWaiting = true
+                ns.RetryMountScan(true)
+            else
+                -- a mount scan that had to wait (in a form, mounted, swimming, or the game said
+                -- none for a moment): back as a caster, scan now
+                ns.RetryMountScan()
             end
             ns.UpdateMountBlock()
         elseif event == "UPDATE_BINDINGS" or event == "CVAR_UPDATE" then
