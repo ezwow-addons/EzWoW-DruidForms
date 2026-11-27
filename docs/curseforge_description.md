@@ -9,7 +9,7 @@ CurseForge summary (KO): 단축키 하나로 물속은 수중 생물, 야외는 
 
 One key for the right druid form in WoW Forever: Aquatic Form in water, Travel Form outdoors, Cat Form indoors and the form of your choice in combat. Only the forms you have learned are used, so it follows your level. An on-screen button shows what the next press does.
 
-![Settings window](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-DruidForms/master/docs/images/ui_en.png)
+![Settings window](https://raw.githubusercontent.com/ezwow-addons/EzWoW-DruidForms/master/docs/images/ui_en.png)
 
 *In-game screenshots with the addon set to English. The game client is Korean, so game text such as zone, item and spell names stays Korean. Character and player names and chat text are blurred.*
 
@@ -63,7 +63,7 @@ Languages: English, 한국어, Deutsch, Français, Español, Русский, 简
 
 WoW Forever용 드루이드 변신 애드온입니다. 단축키 하나로 물속에서는 수중 생물 변신, 야외에서는 날쌘 동물 변신, 실내에서는 표범 변신, 전투 중에는 고른 변신을 합니다. 배운 변신만 쓰므로 레벨에 따라 자동으로 맞춰지고, 화면 버튼이 지금 누르면 될 변신을 보여 줍니다.
 
-![설정창](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-DruidForms/master/docs/images/ui_ko.png)
+![설정창](https://raw.githubusercontent.com/ezwow-addons/EzWoW-DruidForms/master/docs/images/ui_ko.png)
 
 *실제 게임 화면입니다(WoW Forever, 한국어 클라이언트). 캐릭터 · 다른 플레이어 이름과 채팅 내용은 가렸습니다.*
 

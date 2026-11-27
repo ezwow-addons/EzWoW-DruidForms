@@ -7,7 +7,7 @@ One key for the right druid form.
 
 ## 한국어
 
-![설정창](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-DruidForms/master/docs/images/ui_ko.png)
+![설정창](https://raw.githubusercontent.com/ezwow-addons/EzWoW-DruidForms/master/docs/images/ui_ko.png)
 
 > 실제 게임 화면입니다(WoW Forever, 한국어 클라이언트). 캐릭터 · 다른 플레이어 이름과 채팅 내용은 가렸습니다.
 
@@ -46,7 +46,7 @@ One key for the right druid form.
 
 ## English
 
-![Settings window](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-DruidForms/master/docs/images/ui_en.png)
+![Settings window](https://raw.githubusercontent.com/ezwow-addons/EzWoW-DruidForms/master/docs/images/ui_en.png)
 
 > In-game screenshots with the addon set to English. The game client is Korean, so game text such as zone, item and spell names stays Korean. Character and player names and chat text are blurred.
 
