@@ -1,7 +1,9 @@
-# v1.0.22
+# v1.0.23
 
 ### 한국어
-- 변신 중이거나 변신을 푼 직후에 설정의 탈것이 "(탈것 없음)"으로 남던 문제를 고쳤습니다. 변신 중에도 탈 수 있는 탈것(즐겨찾기 우선)을 찾고, 잠깐 못 찾으면 다시 확인합니다.
+- 다른 사용자가 공유한 상점 물건·트레이너 기술·퀘스트를 주고받는 NPC·퀘스트 보상·오브젝트 이름을 한 사람만 보내도 바로 씁니다.
+- 두 사람의 확인이 필요한 드롭 기록은 더 오래 기다립니다.
 
 ### English
-- Fixed the mount choice staying at "(no mount)" in a form or right after leaving one; it now finds a rideable mount (favorites first) in forms too and checks again if it can't for a moment.
+- Shared shop goods, trainer spells, quest givers and turn-ins, quest rewards and object names are now used as soon as one player sends them.
+- Shared drops, which still need a second player, now wait longer for one.
